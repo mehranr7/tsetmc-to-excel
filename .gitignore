@@ -1,0 +1,6 @@
+/.vs
+/Tsetmc-to-excel/*.user
+/Tsetmc-to-excel/Properties
+/Tsetmc-to-excel/obj
+/Tsetmc-to-excel/bin/Debug
+/Tsetmc-to-excel/bin/Release/net8.0
