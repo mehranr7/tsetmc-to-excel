@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Collections.Generic;
+using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using OfficeOpenXml;
 
@@ -6,75 +7,98 @@ class Program
 {
     static async Task Main()
     {
+        while (true)
+        {
+            // Load configuration from appsettings.json
+            IConfiguration config = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                .Build();
+
+            var settings = GetUserInput(config);
+
+            var counter = 0;
+
+            Console.Clear();
+            Console.WriteLine("Press 'Q' to stop the data fetching process.\n");
+
+            using var cts = new CancellationTokenSource();
+            _ = Task.Run(() =>
+            {
+                while (Console.ReadKey(true).Key != ConsoleKey.Q) { }
+                cts.Cancel();
+            });
+            // Continuously fetch data until the user presses 'Q'
+            while (!cts.Token.IsCancellationRequested)
+            {
+                counter++;
+                Console.WriteLine("______________________");
+                Console.WriteLine($"#{counter} Started at {DateTime.Now.ToString("HH:mm:ss")}\n");
+
+                _ = UpdateData(settings);
+                await Task.Delay(settings.UpdateInterval * 1000, cts.Token);
+                Console.Clear();
+                Console.WriteLine("Press 'Q' to stop the data fetching process.\n");
+            }
+            Console.WriteLine("Data fetching stopped.\n");
+        }
+    }
+
+    /// <summary>
+    /// Prompts the user for input, using default values from appsettings.json if skipped.
+    /// </summary>
+    static (string UrlParam, string FileName, string SheetName, int UpdateInterval, List<string> NonZeroItems, List<string> SelectedItems) GetUserInput(IConfiguration config)
+    {
+        Console.Clear();
+        Console.Write($"Enter the parameter for URL (Default: {config["ApiParameter"]}): ");
+        string urlParam = Console.ReadLine()!.Trim();
+        if (string.IsNullOrWhiteSpace(urlParam)) urlParam = config["ApiParameter"]!;
+
+        Console.Clear();
+        Console.Write($"Enter the name of the Excel file (Default: {config["ExcelFileName"]}): ");
+        string fileName = Console.ReadLine()!.Trim();
+        if (string.IsNullOrWhiteSpace(fileName)) fileName = config["ExcelFileName"]!;
+        if (!fileName!.EndsWith(".xlsx")) fileName += ".xlsx";
+
+        Console.Clear();
+        Console.Write($"Enter the name of the worksheet (Default: {config["SheetName"]}): ");
+        string sheetName = Console.ReadLine()!.Trim();
+        if (string.IsNullOrWhiteSpace(sheetName)) sheetName = config["SheetName"]!;
+
+        Console.Clear();
+        Console.Write($"Enter the update interval in seconds (Default: {config["UpdateInterval"]}): ");
+        string updateIntervalInput = Console.ReadLine()!.Trim();
+        int updateInterval = string.IsNullOrWhiteSpace(updateIntervalInput) ? int.Parse(config["UpdateInterval"]!) : int.Parse(updateIntervalInput);
+
+        Console.Clear();
+        List<string> allItems = config.GetSection("AllItems").Get<List<string>>()!;
+        List<string> selectedItems = SelectItems(allItems, true, "Select the items are needed to fetch.");
+
+        Console.Clear();
+        List<string> nonZeroItems = config.GetSection("NonZeroItems").Get<List<string>>()!;
+        List<string> selectedNonZeroItems = SelectItems(allItems, false, "Select the items are not allowed to be 0.");
+
+        return (urlParam, fileName, sheetName, updateInterval, selectedNonZeroItems, selectedItems);
+    }
+
+    /// <summary>
+    /// Sends a request to the ClosingPrice API and returns a dictionary with selected values.
+    /// </summary>
+    static async Task<Dictionary<string, string>> GetClosingPriceInfo(string urlParam, List<string> selectedItems)
+    {
+        Dictionary<string, string> data = new Dictionary<string, string>();
+
         // Load configuration from appsettings.json
         IConfiguration config = new ConfigurationBuilder()
             .SetBasePath(Directory.GetCurrentDirectory())
             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
             .Build();
 
-        var settings = GetUserInput(config);
-
-        Console.WriteLine("\nPress 'Q' to stop the data fetching process.\n");
-
-        using var cts = new CancellationTokenSource();
-        Task.Run(() =>
-        {
-            while (Console.ReadKey(true).Key != ConsoleKey.Q) { }
-            cts.Cancel();
-        });
-
-        // Continuously fetch data until the user presses 'Q'
-        while (!cts.Token.IsCancellationRequested)
-        {
-            await UpdateData(settings);
-            await Task.Delay(settings.UpdateInterval * 1000, cts.Token);
-        }
-
-        Console.WriteLine("Data fetching stopped.");
-    }
-
-    /// <summary>
-    /// Prompts the user for input, using default values from appsettings.json if skipped.
-    /// </summary>
-    static (string UrlParam, string FileName, string SheetName, int UpdateInterval, List<string> SelectedItems) GetUserInput(IConfiguration config)
-    {
-        Console.Write($"Enter the parameter for URL (Default: {config["ApiParameter"]}): ");
-        string urlParam = Console.ReadLine().Trim();
-        if (string.IsNullOrWhiteSpace(urlParam)) urlParam = config["ApiParameter"];
-
-        Console.Write($"Enter the name of the Excel file (Default: {config["ExcelFileName"]}): ");
-        string fileName = Console.ReadLine().Trim();
-        if (string.IsNullOrWhiteSpace(fileName)) fileName = config["ExcelFileName"];
-        if (!fileName.EndsWith(".xlsx")) fileName += ".xlsx";
-
-        Console.Write($"Enter the name of the worksheet (Default: {config["SheetName"]}): ");
-        string sheetName = Console.ReadLine().Trim();
-        if (string.IsNullOrWhiteSpace(sheetName)) sheetName = config["SheetName"];
-
-        Console.Write($"Enter the update interval in seconds (Default: {config["UpdateInterval"]}): ");
-        string updateIntervalInput = Console.ReadLine().Trim();
-        int updateInterval = string.IsNullOrWhiteSpace(updateIntervalInput) ? int.Parse(config["UpdateInterval"]) : int.Parse(updateIntervalInput);
-
-        Console.WriteLine("Select the data fields (comma-separated or press Enter for default):");
-        string[] options = { "priceMin", "priceMax", "priceYesterday", "priceFirst", "pClosing", "pDrCotVal", "zTotTran", "qTotTran5J", "qTotCap" };
-        Console.WriteLine(string.Join(", ", options));
-
-        List<string> allItems = config.GetSection("AllItems").Get<List<string>>();
-        List<string> selectedItems = SelectItems(allItems);
-
-        return (urlParam, fileName, sheetName, updateInterval, selectedItems);
-    }
-
-    /// <summary>
-    /// Sends a request to the ClosingPrice API and returns a dictionary with selected values.
-    /// </summary>
-    static async Task<Dictionary<string, object>> GetClosingPriceInfo(string urlParam, List<string> selectedItems)
-    {
-        Dictionary<string, object> data = new Dictionary<string, object>();
-
         try
         {
+
             using var client = new HttpClient();
+            client.Timeout = TimeSpan.FromSeconds(int.Parse(config["UpdateInterval"]!));
             var request = new HttpRequestMessage(HttpMethod.Get, $"https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceInfo/{urlParam}");
 
             request.Headers.Add("Accept", "application/json, text/plain, */*");
@@ -95,7 +119,7 @@ class Program
             {
                 if (root.TryGetProperty(item, out JsonElement value))
                 {
-                    data[item] = value.ValueKind == JsonValueKind.Number ? value.GetDecimal() : value.ToString();
+                    data[item] = value.ValueKind == JsonValueKind.Number ? value.ToString() : value.ToString();
                 }
             }
         }
@@ -110,13 +134,20 @@ class Program
     /// <summary>
     /// Sends a request to the ETF API and returns a dictionary with pRedTran and pSubTran values.
     /// </summary>
-    static async Task<Dictionary<string, object>> GetETFByInsCode(string urlParam)
+    static async Task<Dictionary<string, string>> GetETFByInsCode(string urlParam)
     {
-        Dictionary<string, object> data = new Dictionary<string, object>();
+        Dictionary<string, string> data = new Dictionary<string, string>();
+
+        // Load configuration from appsettings.json
+        IConfiguration config = new ConfigurationBuilder()
+            .SetBasePath(Directory.GetCurrentDirectory())
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+            .Build();
 
         try
         {
             using var client = new HttpClient();
+            client.Timeout = TimeSpan.FromSeconds(int.Parse(config["UpdateInterval"]!));
             var request = new HttpRequestMessage(HttpMethod.Get, $"https://cdn.tsetmc.com/api/Fund/GetETFByInsCode/{urlParam}");
 
             request.Headers.Add("Accept", "application/json, text/plain, */*");
@@ -131,19 +162,19 @@ class Program
 
             // Extract pRedTran and pSubTran
             if (root.TryGetProperty("pRedTran", out JsonElement pRedTran))
-                data["pRedTran"] = pRedTran.GetDecimal();
+                data["pRedTran"] = pRedTran.ToString();
 
             if (root.TryGetProperty("pSubTran", out JsonElement pSubTran))
-                data["pSubTran"] = pSubTran.GetDecimal();
+                data["pSubTran"] = pSubTran.ToString();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error fetching ETFByInsCode: {ex.Message}");
-            ex = ex.InnerException;
+            ex = ex.InnerException!;
             while (ex != null)
             {
                 Console.WriteLine($"InnerException: {ex.Message}");
-                ex = ex.InnerException;
+                ex = ex.InnerException!;
             }
         }
 
@@ -153,38 +184,125 @@ class Program
     /// <summary>
     /// Combines data from both APIs and saves to Excel.
     /// </summary>
-    static async Task UpdateData((string UrlParam, string FileName, string SheetName, int UpdateInterval, List<string> SelectedItems) settings)
+    static async Task UpdateData((string UrlParams, string FileName, string SheetNames, int UpdateInterval,List<string> NonZeroItems, List<string> SelectedItems) settings)
     {
-        List<string> closingList = ["priceMin", "priceMax", "priceYesterday", "priceFirst", "pClosing", "pDrCotVal", "zTotTran", "qTotTran5J", "qTotCap"];
-        var closingPriceData = new Dictionary<string, object>();
-        if (settings.SelectedItems.Any(x=> closingList.Contains(x)))
-            closingPriceData = await GetClosingPriceInfo(settings.UrlParam, settings.SelectedItems);
-
-        List<string> eftList = ["pRedTran", "pSubTran"];
-        var etfData = new Dictionary<string, object>();
-        if (settings.SelectedItems.Any(x => eftList.Contains(x)))
-            etfData = await GetETFByInsCode(settings.UrlParam);
-
-        // Merge dictionaries
-        foreach (var kvp in etfData)
+        List<string> urlParamsList = settings.UrlParams.Replace(" ","").Split(',').ToList();
+        List<string> sheetnamesList = settings.SheetNames.Replace(" ", "").Split(',').ToList();
+        SemaphoreSlim semaphore = new SemaphoreSlim(1, 1);
+        long longestID = 0;
+        foreach (string sheet in sheetnamesList)
         {
-            closingPriceData[kvp.Key] = kvp.Value;
+            longestID = Math.Max(longestID, GetLatestId(settings.FileName, sheet));
         }
+        longestID++;
 
-        if (closingPriceData.Any())
+        List<string> closingList = ["priceMin", "priceMax", "priceYesterday", "priceFirst", "pClosing", "pDrCotVal", "zTotTran", "qTotTran5J", "qTotCap"];
+
+        Dictionary<int, Dictionary<string, string>> dataCollection = new Dictionary<int, Dictionary<string, string>>();
+        await Parallel.ForAsync(0, urlParamsList.Count, async (i, cancellationToken) =>
         {
-            SaveToExcel(settings.FileName, settings.SheetName, closingPriceData);
+            var closingPriceData = new Dictionary<string, string>
+            {
+                { "SharedID", longestID.ToString() }
+            };
+            
+            bool isDataValid = true;
+
+            if (settings.SelectedItems.Any(x => closingList.Contains(x)))
+            {
+                var result = await GetClosingPriceInfo(urlParamsList[i], settings.SelectedItems);
+                if(result != null && result.Count() > 0)
+                {
+                    foreach (var item in result)
+                    {
+                        if (item.Value == null || string.IsNullOrEmpty(item.Value))
+                        {
+                            isDataValid = false;
+                        }
+                        else if (settings.NonZeroItems.Contains(item.Value))
+                        {
+                            try
+                            {
+                                var value = int.Parse(item.Value);
+                                if (value == 0)
+                                    isDataValid = false;
+                            }
+                            catch (Exception)
+                            {
+                                Console.WriteLine("The recieved data is not a number to check if its zero or not!");
+                            }
+                        }
+                        else
+                        {
+                            closingPriceData.Add(item.Key, item.Value!);
+                        }
+                    }
+                }
+                else
+                {
+                    isDataValid = false;
+                }
+            }
+
+            List<string> eftList = ["pRedTran", "pSubTran"];
+            var etfData = new Dictionary<string, string>();
+            if (settings.SelectedItems.Any(x => eftList.Contains(x)) && isDataValid)
+                etfData = await GetETFByInsCode(urlParamsList[i]);
+
+            // Merge dictionaries
+            if (etfData != null && etfData.Count > 0)
+            {
+                foreach (var item in etfData)
+                {
+                    if (item.Value == null || string.IsNullOrEmpty(item.Value))
+                    {
+                        isDataValid = false;
+                    }
+                    else if (settings.NonZeroItems.Contains(item.Value))
+                    {
+                        try
+                        {
+                            var value = int.Parse(item.Value);
+                            if (value == 0)
+                                isDataValid = false;
+                        }
+                        catch (Exception)
+                        {
+                            Console.WriteLine("The recieved data is not a number to check if its zero or not!");
+                        }
+                    }
+                    else
+                    {
+                        closingPriceData[item.Key] = item.Value!;
+                    }
+                }
+            }
+            else
+            {
+                isDataValid = false;
+            }
+
+            if(isDataValid)
+                dataCollection.Add(i, closingPriceData);
+        });
+
+
+        if (dataCollection.Count == urlParamsList.Count)
+        {
+            foreach (var data in dataCollection)
+                SaveToExcel(settings.FileName, sheetnamesList[data.Key], data.Value);
         }
         else
         {
-            Console.WriteLine("No data received to save!");
+            Console.WriteLine("No valid data received to save!");
         }
     }
+
 
     /// <summary>
     /// Saves data to an Excel file, creating missing columns if necessary.
     /// </summary>
-    static void SaveToExcel(string filePath, string sheetName, Dictionary<string, object> data)
+    static void SaveToExcel(string filePath, string sheetName, Dictionary<string, string> data)
     {
         try
         {
@@ -227,29 +345,66 @@ class Program
             }
 
             package.SaveAs(file);
-            Console.WriteLine("Data updated and saved");
+            Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss")}\t{sheetName}");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error savig excel: {ex.Message}");
-            ex = ex.InnerException;
+            ex = ex.InnerException!;
             while (ex != null)
             {
                 Console.WriteLine($"InnerException: {ex.Message}");
-                ex = ex.InnerException;
+                ex = ex.InnerException!;
             }
         }
     }
 
-    static List<string> SelectItems(List<string> items)
+    static long GetLatestId(string filePath, string sheetName, int columnIndex = 1)
     {
-        HashSet<int> selectedIndices = new HashSet<int>(Enumerable.Range(0, items.Count));
+        try
+        {
+            FileInfo file = new FileInfo(filePath);
+            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+
+            using var package = new ExcelPackage(file);
+            var worksheet = package.Workbook.Worksheets[sheetName];
+
+            // No data in sheet
+            if (worksheet == null || worksheet.Dimension == null)
+                return 0;
+
+            int lastRow = worksheet.Dimension.Rows;
+            long latestId = 0;
+
+            // Assuming row 1 is header
+            for (int row = 2; row <= lastRow; row++)
+            {
+                var cellValue = worksheet.Cells[row, columnIndex].Value;
+                if (cellValue != null && long.TryParse(cellValue.ToString(), out long id))
+                {
+                    latestId = Math.Max(latestId, id);
+                }
+            }
+
+            return latestId;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error retrieving latest ID: {ex.Message}");
+            return 0;
+        }
+    }
+
+    static List<string> SelectItems(List<string> items, bool isSelected , string prompt)
+    {
+        HashSet<int> selectedIndices = isSelected ? new HashSet<int>(Enumerable.Range(0, items.Count)) : new HashSet<int>();
         ConsoleKey key;
         int currentIndex = 0;
 
         do
         {
             Console.Clear();
+            Console.WriteLine(prompt);
             Console.WriteLine("Use Arrow Keys to Navigate, Space to Toggle, Enter to Confirm:");
 
             for (int i = 0; i < items.Count; i++)
