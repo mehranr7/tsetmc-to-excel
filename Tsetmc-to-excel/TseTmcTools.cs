@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.Configuration;
 using System.Text.Json;
 
-namespace TseTmcToExcel.TseTmc
+namespace TseTmcToExcel
 {
     public static class TseTmcTools
     {
@@ -14,19 +14,12 @@ namespace TseTmcToExcel.TseTmc
         public static async Task<Dictionary<string, string>> GetClosingPriceInfo(string urlParam, List<string> selectedItems)
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
-
-            // Load configuration from appsettings.json
-            IConfiguration config = new ConfigurationBuilder()
-                .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-                .Build();
-
             try
             {
                 using var client = new HttpClient();
 
                 // Set timeout based on the configured update interval
-                client.Timeout = TimeSpan.FromSeconds(int.Parse(config["UpdateInterval"]!));
+                client.Timeout = TimeSpan.FromSeconds(IO.Timeout);
 
                 // Create the HTTP request to fetch ClosingPriceInfo
                 var request = new HttpRequestMessage(HttpMethod.Get, $"https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceInfo/{urlParam}");
@@ -75,19 +68,12 @@ namespace TseTmcToExcel.TseTmc
         public static async Task<Dictionary<string, string>> GetETFByInsCode(string urlParam)
         {
             Dictionary<string, string> data = new Dictionary<string, string>();
-
-            // Load configuration from appsettings.json
-            IConfiguration config = new ConfigurationBuilder()
-                .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-                .Build();
-
             try
             {
                 using var client = new HttpClient();
 
                 // Set timeout based on the configured update interval
-                client.Timeout = TimeSpan.FromSeconds(int.Parse(config["UpdateInterval"]!));
+                client.Timeout = TimeSpan.FromSeconds(IO.Timeout);
 
                 // Create the HTTP request to fetch ETF data
                 var request = new HttpRequestMessage(HttpMethod.Get, $"https://cdn.tsetmc.com/api/Fund/GetETFByInsCode/{urlParam}");

@@ -1,6 +1,6 @@
 ﻿using OfficeOpenXml;
 
-namespace TseTmcToExcel.Excel
+namespace TseTmcToExcel
 {
     public static class ExcelTools
     {
