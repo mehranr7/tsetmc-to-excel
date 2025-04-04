@@ -1,6 +1,7 @@
 ﻿using static TseTmcToExcel.ExcelTools;
 using static TseTmcToExcel.TseTmcTools;
 using static TseTmcToExcel.IO;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace TseTmcToExcel
 {
@@ -60,6 +61,10 @@ namespace TseTmcToExcel
             List<string> sheetnamesList = SheetName.Replace(" ", "").Split(',').ToList();
             long longestID = 0; // Track the highest ID found in the existing Excel sheets
 
+            // Add Mareket Overview if it is needed
+            if (SelectedItems.Any(x => MarketOverviewItems.Contains(x)))
+                sheetnamesList.Add(OverviewSheetName);
+
             // Determine the latest ID from all sheets
             foreach (string sheet in sheetnamesList)
             {
@@ -104,6 +109,24 @@ namespace TseTmcToExcel
             else
             {
                 Console.WriteLine("No valid data received to save!");
+            }
+
+
+            if (SelectedItems.Any(x => MarketOverviewItems.Contains(x)))
+            {
+                // Validate and Add GeneralStockData to the closingPriceData
+                var marketOverview = new Dictionary<string, string>{ { "SharedID", longestID.ToString() } };
+                marketOverview = CombineValidData(await GetMarketOverview(), marketOverview).Item2;
+
+                // Save OverView data to Excel
+                if (marketOverview != null && marketOverview.Any())
+                {
+                    SaveToExcel(ExcelFileName, OverviewSheetName, marketOverview);
+                }
+                else
+                {
+                    Console.WriteLine("No valid data received to save!");
+                }
             }
         }
 

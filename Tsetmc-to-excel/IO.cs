@@ -8,11 +8,13 @@ namespace TseTmcToExcel
         public static string ApiParameter { get; private set; }
         public static string ExcelFileName { get; private set; }
         public static string SheetName { get; private set; }
+        public static string OverviewSheetName { get; private set; }
         public static int UpdateInterval { get; private set; }
         public static int Timeout { get; private set; }
         public static bool AskSettings { get; private set; }
         public static List<string> ClosingItems { get; private set; }
         public static List<string> EtfItems { get; private set; }
+        public static List<string> MarketOverviewItems { get; private set; }
         public static List<string> AllItems { get; private set; }
         public static List<string> SelectedItems { get; private set; }
         public static List<string> NonZeroItems { get; private set; }
@@ -32,6 +34,7 @@ namespace TseTmcToExcel
             ApiParameter = configuration.GetValue<string>("ApiParameter")!;
             ExcelFileName = configuration.GetValue<string>("ExcelFileName")!;
             SheetName = configuration.GetValue<string>("SheetName")!;
+            OverviewSheetName = configuration.GetValue<string>("OverviewSheetName")!;
             UpdateInterval = configuration.GetValue<int>("UpdateInterval");
             Timeout = configuration.GetValue<int>("Timeout");
             try
@@ -48,6 +51,7 @@ namespace TseTmcToExcel
             NonZeroItems = configuration.GetSection("NonZeroItems").Get<List<string>>() ?? new List<string>();
             ClosingItems = configuration.GetSection("ClosingItems").Get<List<string>>() ?? new List<string>();
             EtfItems = configuration.GetSection("EtfItems").Get<List<string>>() ?? new List<string>();
+            MarketOverviewItems = configuration.GetSection("MarketOverviewItems").Get<List<string>>() ?? new List<string>();
 
             // If AskSettings is enabled, prompt the user for custom input
             if (AskSettings)
@@ -65,10 +69,16 @@ namespace TseTmcToExcel
                 ExcelFileName = fileName;
 
                 Console.Clear();
-                Console.Write($"Enter the name of the worksheet (Default: {SheetName}): ");
+                Console.Write($"Enter the name of the Stocks worksheet (Default: {SheetName}): ");
                 string sheetName = Console.ReadLine()!.Trim();
                 if (string.IsNullOrWhiteSpace(sheetName)) sheetName = SheetName;
                 SheetName = sheetName;
+
+                Console.Clear();
+                Console.Write($"Enter the name of the Market Overview  worksheet (Default: {OverviewSheetName}): ");
+                string overviewSheetName = Console.ReadLine()!.Trim();
+                if (string.IsNullOrWhiteSpace(overviewSheetName)) overviewSheetName = OverviewSheetName;
+                OverviewSheetName = overviewSheetName;
 
                 Console.Clear();
                 Console.Write($"Enter the update interval in seconds (Default: {UpdateInterval}): ");
@@ -86,6 +96,7 @@ namespace TseTmcToExcel
                 AllItems = new List<string>();
                 AllItems.AddRange(EtfItems);
                 AllItems.AddRange(ClosingItems);
+                AllItems.AddRange(MarketOverviewItems);
 
                 Console.Clear();
                 // Prompt the user to select items to fetch from the API

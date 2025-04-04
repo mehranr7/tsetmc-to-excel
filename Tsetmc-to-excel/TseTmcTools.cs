@@ -1,10 +1,58 @@
-﻿using Microsoft.Extensions.Configuration;
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace TseTmcToExcel
 {
     public static class TseTmcTools
     {
+        /// <summary>
+        /// Sends a request to the GetMarketOverview API and returns a dictionary with selected values.
+        /// </summary>
+        /// <param name="selectedItems">A list of JSON properties to extract from the response.</param>
+        /// <returns>A dictionary containing selected key-value pairs from the API response.</returns>
+        public static async Task<Dictionary<string, string>> GetMarketOverview()
+        {
+            Dictionary<string, string> data = new Dictionary<string, string>();
+            try
+            {
+                var client = new HttpClient();
+                // Set timeout based on the configured update interval
+                client.Timeout = TimeSpan.FromSeconds(IO.Timeout);
+
+
+                // Create the HTTP request to fetch Market Overview
+                var request = new HttpRequestMessage(HttpMethod.Get, "https://cdn.tsetmc.com/api/MarketData/GetMarketOverview/1");
+
+                // Send the request and ensure a successful response
+                var response = await client.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+
+                // Read the JSON response
+                var jsonResponse = await response.Content.ReadAsStringAsync();
+
+                using JsonDocument doc = JsonDocument.Parse(jsonResponse);
+                var root = doc.RootElement.GetProperty("marketOverview");
+
+                // Add the current timestamp to the data
+                data["Date"] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+                // Extract the selected fields from the JSON response
+                foreach (var item in IO.SelectedItems)
+                {
+                    if (root.TryGetProperty(item, out JsonElement value))
+                    {
+                        // Convert numbers to string representation
+                        data[item] = value.ValueKind == JsonValueKind.Number ? value.ToString() : value.ToString();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Handle errors by logging the message
+                Console.WriteLine($"Error fetching GetMarketOverview: {ex.Message}");
+            }
+            return data;
+        }
+
         /// <summary>
         /// Sends a request to the ClosingPrice API and returns a dictionary with selected values.
         /// </summary>
