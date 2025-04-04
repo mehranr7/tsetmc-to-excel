@@ -58,9 +58,6 @@ namespace TseTmcToExcel
             // Split multiple parameters and sheet names into lists for processing
             List<string> urlParamsList = ApiParameter.Replace(" ", "").Split(',').ToList();
             List<string> sheetnamesList = SheetName.Replace(" ", "").Split(',').ToList();
-
-            // Semaphore to prevent concurrent access issues
-            SemaphoreSlim semaphore = new SemaphoreSlim(1, 1);
             long longestID = 0; // Track the highest ID found in the existing Excel sheets
 
             // Determine the latest ID from all sheets
@@ -69,9 +66,6 @@ namespace TseTmcToExcel
                 longestID = Math.Max(longestID, GetLatestId(ExcelFileName, sheet));
             }
             longestID++; // Increment to ensure new data has a unique ID
-
-            // Define a list of closing price-related items
-            List<string> closingList = ["priceMin", "priceMax", "priceYesterday", "priceFirst", "pClosing", "pDrCotVal", "zTotTran", "qTotTran5J", "qTotCap"];
 
             // Dictionary to store retrieved data from API responses
             Dictionary<int, Dictionary<string, string>> dataCollection = new Dictionary<int, Dictionary<string, string>>();
@@ -82,64 +76,18 @@ namespace TseTmcToExcel
                 bool isDataValid = true; // Flag to track data validity
 
                 // Fetch closing price data if required
-                if (SelectedItems.Any(x => closingList.Contains(x)))
+                if (SelectedItems.Any(x => ClosingItems.Contains(x)))
                 {
                     var result = await GetClosingPriceInfo(urlParamsList[i], SelectedItems);
-                    if (result != null && result.Count() > 0)
-                    {
-                        foreach (var item in result)
-                        {
-                            if (string.IsNullOrEmpty(item.Value))
-                            {
-                                isDataValid = false; // Mark as invalid if any value is empty
-                            }
-                            else if (NonZeroItems.Contains(item.Value))
-                            {
-                                // Ensure the value is non-zero if required
-                                if (int.TryParse(item.Value, out int value) && value == 0)
-                                    isDataValid = false;
-                            }
-                            else
-                            {
-                                closingPriceData.Add(item.Key, item.Value!);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        isDataValid = false; // Mark as invalid if no data is received
-                    }
+                    (isDataValid, closingPriceData) = CombineValidData(result, closingPriceData);
                 }
 
                 // Fetch ETF data if required
-                List<string> eftList = ["pRedTran", "pSubTran"];
-                var etfData = new Dictionary<string, string>();
-                if (SelectedItems.Any(x => eftList.Contains(x)) && isDataValid)
-                    etfData = await GetETFByInsCode(urlParamsList[i]);
-
-                // Merge ETF data into the existing data set
-                if (etfData != null && etfData.Count > 0)
+                if (SelectedItems.Any(x => EtfItems.Contains(x)) && isDataValid)
                 {
-                    foreach (var item in etfData)
-                    {
-                        if (string.IsNullOrEmpty(item.Value))
-                        {
-                            isDataValid = false; // Mark as invalid if any value is empty
-                        }
-                        else if (NonZeroItems.Contains(item.Value))
-                        {
-                            if (int.TryParse(item.Value, out int value) && value == 0)
-                                isDataValid = false;
-                        }
-                        else
-                        {
-                            closingPriceData[item.Key] = item.Value!;
-                        }
-                    }
-                }
-                else
-                {
-                    isDataValid = false; // Mark as invalid if ETF data is missing
+                    // Merge ETF data into the existing data set
+                    var etfData =  await GetETFByInsCode(urlParamsList[i]);
+                    (isDataValid, closingPriceData) = CombineValidData(etfData, closingPriceData);
                 }
 
                 // Store valid data only
@@ -157,6 +105,60 @@ namespace TseTmcToExcel
             {
                 Console.WriteLine("No valid data received to save!");
             }
+        }
+
+        /// <summary>
+        /// Combines valid data from input dictionary into result dictionary while validating the values.
+        /// </summary>
+        /// <param name="input">Dictionary containing input data to validate and combine</param>
+        /// <param name="result">Dictionary to store valid key-value pairs from input</param>
+        /// <returns>
+        /// Tuple containing:
+        /// - boolean indicating if all data is valid (true) or not (false)
+        /// - the result dictionary with valid key-value pairs added
+        /// </returns>
+        private static (bool, Dictionary<string, string>) CombineValidData(Dictionary<string, string> input, Dictionary<string, string> result)
+        {
+            // Create a local copy of the result dictionary to avoid modifying the shared one during processing
+            var localResult = new Dictionary<string, string>(result);
+            var isDataValid = true;
+
+            // Early exit if input is null or empty
+            if (input == null || input.Count == 0)
+            {
+                return (false, result);
+            }
+
+            foreach (var item in input)
+            {
+                // First validation: Check if value is null or empty
+                if (string.IsNullOrEmpty(item.Value))
+                {
+                    isDataValid = false;
+                    break;
+                }
+
+                // Second validation: Check NonZeroItems (assuming it's thread-safe or immutable)
+                if (NonZeroItems.Contains(item.Value) && int.TryParse(item.Value, out int value) && value == 0)
+                {
+                    isDataValid = false;
+                    break;
+                }
+
+                // If we get here, validations passed - add to local result
+                localResult[item.Key] = item.Value;
+            }
+
+            // Only update the shared result if all validations passed
+            if (isDataValid)
+            {
+                foreach (var item in localResult)
+                {
+                    result[item.Key] = item.Value;
+                }
+            }
+
+            return (isDataValid, result);
         }
     }
 }

@@ -1,6 +1,4 @@
-﻿using System.Text.Json;
-using Microsoft.Extensions.Configuration;
-using Microsoft.VisualBasic;
+﻿using Microsoft.Extensions.Configuration;
 
 namespace TseTmcToExcel
 {
@@ -13,8 +11,8 @@ namespace TseTmcToExcel
         public static int UpdateInterval { get; private set; }
         public static int Timeout { get; private set; }
         public static bool AskSettings { get; private set; }
-        public static bool IsSelectedItems { get; private set; }
-        public static bool IsSelectedNonZero { get; private set; }
+        public static List<string> ClosingItems { get; private set; }
+        public static List<string> EtfItems { get; private set; }
         public static List<string> AllItems { get; private set; }
         public static List<string> SelectedItems { get; private set; }
         public static List<string> NonZeroItems { get; private set; }
@@ -36,12 +34,20 @@ namespace TseTmcToExcel
             SheetName = configuration.GetValue<string>("SheetName")!;
             UpdateInterval = configuration.GetValue<int>("UpdateInterval");
             Timeout = configuration.GetValue<int>("Timeout");
-            AskSettings = configuration.GetValue<bool>("AskSettings");
+            try
+            {
+                AskSettings = configuration.GetValue<bool>("AskSettings");
+            }
+            catch (Exception)
+            {
+                AskSettings = configuration.GetValue<int>("AskSettings") == 1;
+            }
 
             // Load lists from configuration file, ensuring they are not null
             SelectedItems = configuration.GetSection("SelectedItems").Get<List<string>>() ?? new List<string>();
             NonZeroItems = configuration.GetSection("NonZeroItems").Get<List<string>>() ?? new List<string>();
-            AllItems = configuration.GetSection("AllItems").Get<List<string>>() ?? new List<string>();
+            ClosingItems = configuration.GetSection("ClosingItems").Get<List<string>>() ?? new List<string>();
+            EtfItems = configuration.GetSection("EtfItems").Get<List<string>>() ?? new List<string>();
 
             // If AskSettings is enabled, prompt the user for custom input
             if (AskSettings)
@@ -75,6 +81,11 @@ namespace TseTmcToExcel
                 string timeOutInput = Console.ReadLine()!.Trim();
                 int timeout = string.IsNullOrWhiteSpace(timeOutInput) ? Timeout : int.Parse(timeOutInput);
                 Timeout = timeout;
+
+                // Combine all of the available items
+                AllItems = new List<string>();
+                AllItems.AddRange(EtfItems);
+                AllItems.AddRange(ClosingItems);
 
                 Console.Clear();
                 // Prompt the user to select items to fetch from the API
