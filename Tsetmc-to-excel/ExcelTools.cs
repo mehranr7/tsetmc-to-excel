@@ -1,4 +1,5 @@
-﻿using OfficeOpenXml;
+﻿using System.Globalization;
+using OfficeOpenXml;
 
 namespace TseTmcToExcel
 {
@@ -55,7 +56,7 @@ namespace TseTmcToExcel
                 {
                     if (data.ContainsKey(key))
                     {
-                        worksheet.Cells[newRow, colIndex].Value = data[key];
+                        worksheet.Cells[newRow, colIndex].Value = ParseString(data[key]);
                     }
                     colIndex++;
                 }
@@ -121,5 +122,27 @@ namespace TseTmcToExcel
                 return 0;
             }
         }
+
+
+        /// <summary>
+        /// Attempts to parse the input string as a number.
+        /// If successful, returns the numeric value (as a double).
+        /// If not, returns the original string.
+        /// </summary>
+        /// <param name="input">The input string to parse.</param>
+        /// <returns>A double if the input is numeric; otherwise, the original string.</returns>
+        public static object ParseString(string input)
+        {
+            // Try to parse the input string to a double using invariant culture (for consistent decimal format)
+            if (double.TryParse(input, NumberStyles.Any, CultureInfo.InvariantCulture, out double number))
+            {
+                // If parsing succeeds, return the numeric value
+                return number;
+            }
+
+            // If parsing fails, return the original string
+            return input;
+        }
     }
+
 }
