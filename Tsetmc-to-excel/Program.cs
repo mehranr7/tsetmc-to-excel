@@ -1,6 +1,7 @@
 ﻿using static TseTmcToExcel.ExcelTools;
 using static TseTmcToExcel.TseTmcTools;
 using static TseTmcToExcel.IO;
+using OfficeOpenXml;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace TseTmcToExcel
@@ -100,11 +101,21 @@ namespace TseTmcToExcel
                     dataCollection.Add(i, closingPriceData);
             });
 
+            // Open the excel file
+            ExcelPackage package = new ExcelPackage();
+            FileInfo file = new FileInfo(ExcelFileName);
+            var changes = new List<string>();
+            var excelFile = OpenExcel(package, file);
+
             // Save valid data to Excel
             if (dataCollection.Count == urlParamsList.Count)
             {
+
                 foreach (var data in dataCollection)
-                    SaveToExcel(ExcelFileName, sheetnamesList[data.Key], data.Value);
+                {
+                    package = AddToExcel(excelFile, sheetnamesList[data.Key], data.Value);
+                    changes.Add(sheetnamesList[data.Key]);
+                }
             }
             else
             {
@@ -121,13 +132,16 @@ namespace TseTmcToExcel
                 // Save OverView data to Excel
                 if (marketOverview != null && marketOverview.Any())
                 {
-                    SaveToExcel(ExcelFileName, OverviewSheetName, marketOverview);
+                    package = AddToExcel(excelFile, OverviewSheetName, marketOverview);
+                    changes.Add(OverviewSheetName);
                 }
                 else
                 {
                     Console.WriteLine("No valid data received to save!");
                 }
             }
+            // save the changed file
+            SaveExcel(package, file, changes);
         }
 
         /// <summary>

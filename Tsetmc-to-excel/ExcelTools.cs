@@ -6,21 +6,82 @@ namespace TseTmcToExcel
     public static class ExcelTools
     {
         /// <summary>
-        /// Saves data to an Excel file, creating missing columns if necessary.
+        /// Opens an existing Excel file or creates a new Excel package if the file doesn't exist
         /// </summary>
-        /// <param name="filePath">The file path of the Excel file.</param>
-        /// <param name="sheetName">The name of the sheet to write data to.</param>
-        /// <param name="data">A dictionary containing key-value pairs to store in the sheet.</param>
-        public static void SaveToExcel(string filePath, string sheetName, Dictionary<string, string> data)
+        /// <param name="package">ExcelPackage object (can be null)</param>
+        /// <param name="file">FileInfo object representing the Excel file</param>
+        /// <returns>Initialized ExcelPackage object</returns>
+        public static ExcelPackage OpenExcel(ExcelPackage package, FileInfo file)
         {
             try
             {
-                FileInfo file = new FileInfo(filePath);
-                ExcelPackage.LicenseContext = LicenseContext.NonCommercial; // Set license context for EPPlus
+                // Set license context for EPPlus to NonCommercial (required for EPPlus 5+)
+                ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
                 // Open existing Excel file if it exists, otherwise create a new package
-                using var package = file.Exists ? new ExcelPackage(file) : new ExcelPackage();
+                package = file.Exists ? new ExcelPackage(file) : new ExcelPackage();
+            }
+            catch (Exception ex)
+            {
+                // Handle and log errors during file opening/creation
+                Console.WriteLine($"Error saving Excel: {ex.Message}");
 
+                // Loop through and log all inner exceptions for detailed error information
+                ex = ex.InnerException!;
+                while (ex != null)
+                {
+                    Console.WriteLine($"InnerException: {ex.Message}");
+                    ex = ex.InnerException!;
+                }
+            }
+
+            // Return the initialized Excel package (or null if an error occurred)
+            return package;
+        }
+
+        /// <summary>
+        /// Saves the Excel package to a file and logs any changes made
+        /// </summary>
+        /// <param name="package">ExcelPackage object to save</param>
+        /// <param name="file">Target file to save to</param>
+        /// <param name="changes">List of changes to log</param>
+        public static void SaveExcel(ExcelPackage package, FileInfo file, List<string> changes)
+        {
+            try
+            {
+                // Save the Excel file to the specified location
+                package.SaveAs(file);
+            }
+            catch (Exception ex)
+            {
+                // Handle and log errors during saving
+                Console.WriteLine($"Error saving Excel: {ex.Message}");
+
+                // Loop through and log all inner exceptions for detailed error information
+                ex = ex.InnerException!;
+                while (ex != null)
+                {
+                    Console.WriteLine($"InnerException: {ex.Message}");
+                    ex = ex.InnerException!;
+                }
+            }
+
+            // Log the timestamp and all applied changes
+            Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss")}");
+            foreach (string change in changes)
+                Console.WriteLine($" - {change}");
+        }
+
+        /// <summary>
+        /// Adds data to an Excel file, creating missing columns if necessary.
+        /// </summary>
+        /// <param name="package">The Excel file.</param>
+        /// <param name="sheetName">The name of the sheet to write data to.</param>
+        /// <param name="data">A dictionary containing key-value pairs to store in the sheet.</param>
+        public static ExcelPackage AddToExcel(ExcelPackage package, string sheetName, Dictionary<string, string> data)
+        {
+            try
+            {
                 // Get the worksheet by name or create a new one if it doesn't exist
                 var worksheet = package.Workbook.Worksheets.FirstOrDefault(ws => ws.Name == sheetName)
                                 ?? package.Workbook.Worksheets.Add(sheetName);
@@ -60,15 +121,11 @@ namespace TseTmcToExcel
                     }
                     colIndex++;
                 }
-
-                // Save the Excel file
-                package.SaveAs(file);
-                Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss")}\t{sheetName}");
             }
             catch (Exception ex)
             {
                 // Handle and log errors during saving
-                Console.WriteLine($"Error saving Excel: {ex.Message}");
+                Console.WriteLine($"Error adding to Excel: {ex.Message}");
                 ex = ex.InnerException!;
                 while (ex != null)
                 {
@@ -76,6 +133,8 @@ namespace TseTmcToExcel
                     ex = ex.InnerException!;
                 }
             }
+
+            return package;
         }
 
         /// <summary>
