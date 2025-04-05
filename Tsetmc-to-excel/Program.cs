@@ -76,31 +76,60 @@ namespace TseTmcToExcel
             // Dictionary to store retrieved data from API responses
             Dictionary<int, Dictionary<string, string>> dataCollection = new Dictionary<int, Dictionary<string, string>>();
 
-            await Parallel.ForAsync(0, urlParamsList.Count, async (i, cancellationToken) =>
+            if (isParallel)
             {
-                var closingPriceData = new Dictionary<string, string> { { "SharedID", longestID.ToString() } };
-                bool isDataValid = true; // Flag to track data validity
-
-                // Fetch closing price data if required
-                if (SelectedItems.Any(x => ClosingItems.Contains(x)))
+                await Parallel.ForAsync(0, urlParamsList.Count, async (i, cancellationToken) =>
                 {
-                    var result = await GetClosingPriceInfo(urlParamsList[i], SelectedItems);
-                    (isDataValid, closingPriceData) = CombineValidData(result, closingPriceData);
-                }
+                    var closingPriceData = new Dictionary<string, string> { { "SharedID", longestID.ToString() } };
+                    bool isDataValid = true; // Flag to track data validity
 
-                // Fetch ETF data if required
-                if (SelectedItems.Any(x => EtfItems.Contains(x)) && isDataValid)
+                    // Fetch closing price data if required
+                    if (SelectedItems.Any(x => ClosingItems.Contains(x)))
+                    {
+                        var result = await GetClosingPriceInfo(urlParamsList[i], SelectedItems);
+                        (isDataValid, closingPriceData) = CombineValidData(result, closingPriceData);
+                    }
+
+                    // Fetch ETF data if required
+                    if (SelectedItems.Any(x => EtfItems.Contains(x)) && isDataValid)
+                    {
+                        // Merge ETF data into the existing data set
+                        var etfData = await GetETFByInsCode(urlParamsList[i]);
+                        (isDataValid, closingPriceData) = CombineValidData(etfData, closingPriceData);
+                    }
+
+                    // Store valid data only
+                    if (isDataValid)
+                        dataCollection.Add(i, closingPriceData);
+                });
+            }
+            else
+            {
+                for (int i = 0; i < urlParamsList.Count; i++)
                 {
-                    // Merge ETF data into the existing data set
-                    var etfData =  await GetETFByInsCode(urlParamsList[i]);
-                    (isDataValid, closingPriceData) = CombineValidData(etfData, closingPriceData);
+                    var closingPriceData = new Dictionary<string, string> { { "SharedID", longestID.ToString() } };
+                    bool isDataValid = true; // Flag to track data validity
+
+                    // Fetch closing price data if required
+                    if (SelectedItems.Any(x => ClosingItems.Contains(x)))
+                    {
+                        var result = await GetClosingPriceInfo(urlParamsList[i], SelectedItems);
+                        (isDataValid, closingPriceData) = CombineValidData(result, closingPriceData);
+                    }
+
+                    // Fetch ETF data if required
+                    if (SelectedItems.Any(x => EtfItems.Contains(x)) && isDataValid)
+                    {
+                        // Merge ETF data into the existing data set
+                        var etfData = await GetETFByInsCode(urlParamsList[i]);
+                        (isDataValid, closingPriceData) = CombineValidData(etfData, closingPriceData);
+                    }
+
+                    // Store valid data only
+                    if (isDataValid)
+                        dataCollection.Add(i, closingPriceData);
                 }
-
-                // Store valid data only
-                if (isDataValid)
-                    dataCollection.Add(i, closingPriceData);
-            });
-
+            }
             // Open the excel file
             ExcelPackage package = new ExcelPackage();
             FileInfo file = new FileInfo(ExcelFileName);

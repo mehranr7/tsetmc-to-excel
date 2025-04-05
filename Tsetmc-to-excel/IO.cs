@@ -12,6 +12,7 @@ namespace TseTmcToExcel
         public static int UpdateInterval { get; private set; }
         public static int Timeout { get; private set; }
         public static bool AskSettings { get; private set; }
+        public static bool isParallel { get; private set; }
         public static List<string> ClosingItems { get; private set; }
         public static List<string> EtfItems { get; private set; }
         public static List<string> MarketOverviewItems { get; private set; }
@@ -44,6 +45,14 @@ namespace TseTmcToExcel
             catch (Exception)
             {
                 AskSettings = configuration.GetValue<int>("AskSettings") == 1;
+            }
+            try
+            {
+                isParallel = configuration.GetValue<bool>("Parallel");
+            }
+            catch (Exception)
+            {
+                isParallel = configuration.GetValue<int>("Parallel") == 1;
             }
 
             // Load lists from configuration file, ensuring they are not null
@@ -91,6 +100,17 @@ namespace TseTmcToExcel
                 string timeOutInput = Console.ReadLine()!.Trim();
                 int timeout = string.IsNullOrWhiteSpace(timeOutInput) ? Timeout : int.Parse(timeOutInput);
                 Timeout = timeout;
+
+                var trueFalseUserInput = new List<char>(['y', 'Y', 'n', 'N', '0', '1']);
+                var parallelInput = "";
+                while (!trueFalseUserInput.Any(x=>x.Equals(parallelInput)))
+                {
+                    Console.Clear();
+                    Console.Write($"Do you want to send requsts using parallel? Y/N or 1/0 (Default: {isParallel}): ");
+                    parallelInput = Console.ReadKey().ToString();
+                }
+                isParallel = parallelInput!.ToLower().Equals('y') || parallelInput.Equals('1');
+
 
                 // Combine all of the available items
                 AllItems = new List<string>();
