@@ -48,7 +48,15 @@ namespace TseTmcToExcel
                     }
                 }
 
-                Console.WriteLine("Data fetching stopped.\n");
+                var userInput = "";
+                while (!userInput!.Equals("y"))
+                {
+                    Console.Clear();
+                    Console.Write($"Do you want to start again? Y/N");
+                    userInput = Console.ReadKey().KeyChar.ToString().ToLower();
+                    if (userInput.Equals("n"))
+                        Environment.Exit(0);
+                }
             }
         }
 
@@ -58,13 +66,13 @@ namespace TseTmcToExcel
         public static async Task UpdateData()
         {
             // Split multiple parameters and sheet names into lists for processing
-            List<string> urlParamsList = ApiParameter.Replace(" ", "").Split(',').ToList();
-            List<string> sheetnamesList = SheetName.Replace(" ", "").Split(',').ToList();
-            long longestID = 0; // Track the highest ID found in the existing Excel sheets
+            List<string> sheetnamesList = new List<string>()
+            {
+                OverviewSheetName, StockSheetName
+            };
 
-            // Add Mareket Overview if it is needed
-            if (SelectedItems.Any(x => MarketOverviewItems.Contains(x)))
-                sheetnamesList.Add(OverviewSheetName);
+            // Track the highest ID found in the existing Excel sheets
+            long longestID = 0;
 
             // Determine the latest ID from all sheets
             foreach (string sheet in sheetnamesList)
@@ -76,60 +84,22 @@ namespace TseTmcToExcel
             // Dictionary to store retrieved data from API responses
             Dictionary<int, Dictionary<string, string>> dataCollection = new Dictionary<int, Dictionary<string, string>>();
 
+            // Fetch data for each url param parallel or linear
             if (isParallel)
             {
-                await Parallel.ForAsync(0, urlParamsList.Count, async (i, cancellationToken) =>
+                await Parallel.ForAsync(0, ApiParameterList.Count, async (i, cancellationToken) =>
                 {
-                    var closingPriceData = new Dictionary<string, string> { { "SharedID", longestID.ToString() } };
-                    bool isDataValid = true; // Flag to track data validity
-
-                    // Fetch closing price data if required
-                    if (SelectedItems.Any(x => ClosingItems.Contains(x)))
-                    {
-                        var result = await GetClosingPriceInfo(urlParamsList[i], SelectedItems);
-                        (isDataValid, closingPriceData) = CombineValidData(result, closingPriceData);
-                    }
-
-                    // Fetch ETF data if required
-                    if (SelectedItems.Any(x => EtfItems.Contains(x)) && isDataValid)
-                    {
-                        // Merge ETF data into the existing data set
-                        var etfData = await GetETFByInsCode(urlParamsList[i]);
-                        (isDataValid, closingPriceData) = CombineValidData(etfData, closingPriceData);
-                    }
-
-                    // Store valid data only
-                    if (isDataValid)
-                        dataCollection.Add(i, closingPriceData);
+                    dataCollection = await FetchValidData(dataCollection, longestID, i);
                 });
             }
             else
             {
-                for (int i = 0; i < urlParamsList.Count; i++)
+                for (int i = 0; i < ApiParameterList.Count; i++)
                 {
-                    var closingPriceData = new Dictionary<string, string> { { "SharedID", longestID.ToString() } };
-                    bool isDataValid = true; // Flag to track data validity
-
-                    // Fetch closing price data if required
-                    if (SelectedItems.Any(x => ClosingItems.Contains(x)))
-                    {
-                        var result = await GetClosingPriceInfo(urlParamsList[i], SelectedItems);
-                        (isDataValid, closingPriceData) = CombineValidData(result, closingPriceData);
-                    }
-
-                    // Fetch ETF data if required
-                    if (SelectedItems.Any(x => EtfItems.Contains(x)) && isDataValid)
-                    {
-                        // Merge ETF data into the existing data set
-                        var etfData = await GetETFByInsCode(urlParamsList[i]);
-                        (isDataValid, closingPriceData) = CombineValidData(etfData, closingPriceData);
-                    }
-
-                    // Store valid data only
-                    if (isDataValid)
-                        dataCollection.Add(i, closingPriceData);
+                    dataCollection = await FetchValidData(dataCollection, longestID, i);
                 }
             }
+
             // Open the excel file
             ExcelPackage package = new ExcelPackage();
             FileInfo file = new FileInfo(ExcelFileName);
@@ -137,19 +107,15 @@ namespace TseTmcToExcel
             var excelFile = OpenExcel(package, file);
 
             // Save valid data to Excel
-            if (dataCollection.Count == urlParamsList.Count)
-            {
-
+            if (dataCollection.Count == ApiParameterList.Count)
                 foreach (var data in dataCollection)
                 {
-                    package = AddToExcel(excelFile, sheetnamesList[data.Key], data.Value);
-                    changes.Add(sheetnamesList[data.Key]);
+                    package = AddToExcel(excelFile, StockSheetName, data.Value);
+                    
+                    changes.Add(StockNameList[data.Key]);
                 }
-            }
             else
-            {
                 Console.WriteLine("No valid data received to save!");
-            }
 
 
             if (SelectedItems.Any(x => MarketOverviewItems.Contains(x)))
@@ -171,6 +137,42 @@ namespace TseTmcToExcel
             }
             // save the changed file
             SaveExcel(package, file, changes);
+        }
+
+        /// <summary>
+        /// Fetch data from TSETMC and put if its valid add to a data collection
+        /// </summary>
+        /// <param name="inputCollection">the input data collection</param>
+        /// <param name="longestID">the longest shared ID</param>
+        /// <param name="urlParam">the url param need to be fetched</param>
+        /// <param name="i">the index of the stocks list</param>
+        /// <returns>the modified data collection that result has been added into</returns>
+        private static async Task<Dictionary<int, Dictionary<string,string>>> FetchValidData(Dictionary<int, Dictionary<string, string>> inputCollection, long longestID, int i)
+        {
+            var dataCollection = inputCollection;
+            var closingPriceData = new Dictionary<string, string> { { "SharedID", longestID.ToString() }, { "Stock", StockNameList[i] } };
+            bool isDataValid = true; // Flag to track data validity
+
+            // Fetch closing price data if required
+            if (SelectedItems.Any(x => ClosingItems.Contains(x)))
+            {
+                var result = await GetClosingPriceInfo(ApiParameterList[i], SelectedItems);
+                (isDataValid, closingPriceData) = CombineValidData(result, closingPriceData);
+            }
+
+            // Fetch ETF data if required
+            if (SelectedItems.Any(x => EtfItems.Contains(x)) && isDataValid)
+            {
+                // Merge ETF data into the existing data set
+                var etfData = await GetETFByInsCode(ApiParameterList[i]);
+                (isDataValid, closingPriceData) = CombineValidData(etfData, closingPriceData);
+            }
+
+            // Store valid data only
+            if (isDataValid)
+                dataCollection.Add(i, closingPriceData);
+
+            return dataCollection;
         }
 
         /// <summary>
@@ -198,7 +200,7 @@ namespace TseTmcToExcel
             foreach (var item in input)
             {
                 // First validation: Check if value is null or empty
-                if (string.IsNullOrEmpty(item.Value))
+                if (string.IsNullOrWhiteSpace(item.Value))
                 {
                     isDataValid = false;
                     break;

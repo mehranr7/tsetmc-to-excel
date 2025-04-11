@@ -5,14 +5,15 @@ namespace TseTmcToExcel
     public static class IO
     {
         // Static properties to hold configuration values
-        public static string ApiParameter { get; private set; }
         public static string ExcelFileName { get; private set; }
-        public static string SheetName { get; private set; }
+        public static string StockSheetName { get; private set; }
         public static string OverviewSheetName { get; private set; }
         public static int UpdateInterval { get; private set; }
         public static int Timeout { get; private set; }
         public static bool AskSettings { get; private set; }
         public static bool isParallel { get; private set; }
+        public static List<string> ApiParameterList { get; private set; }
+        public static List<string> StockNameList { get; private set; }
         public static List<string> ClosingItems { get; private set; }
         public static List<string> EtfItems { get; private set; }
         public static List<string> MarketOverviewItems { get; private set; }
@@ -32,9 +33,8 @@ namespace TseTmcToExcel
                 .Build(); // Build the configuration
 
             // Retrieve values from configuration and assign them to static properties
-            ApiParameter = configuration.GetValue<string>("ApiParameter")!;
             ExcelFileName = configuration.GetValue<string>("ExcelFileName")!;
-            SheetName = configuration.GetValue<string>("SheetName")!;
+            StockSheetName = configuration.GetValue<string>("StockSheetName")!;
             OverviewSheetName = configuration.GetValue<string>("OverviewSheetName")!;
             UpdateInterval = configuration.GetValue<int>("UpdateInterval");
             Timeout = configuration.GetValue<int>("Timeout");
@@ -56,6 +56,8 @@ namespace TseTmcToExcel
             }
 
             // Load lists from configuration file, ensuring they are not null
+            ApiParameterList = configuration.GetSection("ApiParameter").Get<List<string>>() ?? new List<string>();
+            StockNameList = configuration.GetSection("StockNameList").Get<List<string>>() ?? new List<string>();
             SelectedItems = configuration.GetSection("SelectedItems").Get<List<string>>() ?? new List<string>();
             NonZeroItems = configuration.GetSection("NonZeroItems").Get<List<string>>() ?? new List<string>();
             ClosingItems = configuration.GetSection("ClosingItems").Get<List<string>>() ?? new List<string>();
@@ -66,10 +68,21 @@ namespace TseTmcToExcel
             if (AskSettings)
             {
                 Console.Clear();
-                Console.Write($"Enter the parameter for URL (Default: {ApiParameter}): ");
-                string urlParam = Console.ReadLine()!.Trim();
-                if (string.IsNullOrWhiteSpace(urlParam)) urlParam = ApiParameter;
-                ApiParameter = urlParam;
+                Console.Write($"Enter the list of parameters for the URL separated by a comma (Default: {string.Join(", ", ApiParameterList)}): ");
+                string? apiParameterInput = Console.ReadLine()?.Trim();
+                var apiToUse = string.IsNullOrWhiteSpace(apiParameterInput)
+                    ? ApiParameterList
+                    : apiParameterInput.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+                ApiParameterList = apiToUse;
+
+
+                Console.Clear();
+                Console.Write($"Enter the list of Stock Names in order separated by a comma (Default: {string.Join(", ", StockNameList)}): ");
+                string? stockNameListInput = Console.ReadLine()?.Trim();
+                var stockListToUse = string.IsNullOrWhiteSpace(stockNameListInput)
+                    ? StockNameList
+                    : stockNameListInput.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+                StockNameList = stockListToUse;
 
                 Console.Clear();
                 Console.Write($"Enter the name of the Excel file (Default: {ExcelFileName}): ");
@@ -78,10 +91,10 @@ namespace TseTmcToExcel
                 ExcelFileName = fileName;
 
                 Console.Clear();
-                Console.Write($"Enter the name of the Stocks worksheet (Default: {SheetName}): ");
-                string sheetName = Console.ReadLine()!.Trim();
-                if (string.IsNullOrWhiteSpace(sheetName)) sheetName = SheetName;
-                SheetName = sheetName;
+                Console.Write($"Enter the name of the Stocks worksheet (Default: {StockSheetName}): ");
+                string stockSheetName = Console.ReadLine()!.Trim();
+                if (string.IsNullOrWhiteSpace(stockSheetName)) stockSheetName = StockSheetName;
+                StockSheetName = stockSheetName;
 
                 Console.Clear();
                 Console.Write($"Enter the name of the Market Overview  worksheet (Default: {OverviewSheetName}): ");
@@ -101,15 +114,15 @@ namespace TseTmcToExcel
                 int timeout = string.IsNullOrWhiteSpace(timeOutInput) ? Timeout : int.Parse(timeOutInput);
                 Timeout = timeout;
 
-                var trueFalseUserInput = new List<char>(['y', 'Y', 'n', 'N', '0', '1']);
+                var trueFalseUserInput = new List<string>(["y", "n", "0", "1"]);
                 var parallelInput = "";
                 while (!trueFalseUserInput.Any(x=>x.Equals(parallelInput)))
                 {
                     Console.Clear();
                     Console.Write($"Do you want to send requsts using parallel? Y/N or 1/0 (Default: {isParallel}): ");
-                    parallelInput = Console.ReadKey().ToString();
+                    parallelInput = Console.ReadKey().KeyChar.ToString().ToLower();
                 }
-                isParallel = parallelInput!.ToLower().Equals('y') || parallelInput.Equals('1');
+                isParallel = parallelInput!.Equals("y") || parallelInput.Equals("1");
 
 
                 // Combine all of the available items
