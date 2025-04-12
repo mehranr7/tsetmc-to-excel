@@ -8,10 +8,9 @@ namespace TseTmcToExcel
         /// <summary>
         /// Opens an existing Excel file or creates a new Excel package if the file doesn't exist
         /// </summary>
-        /// <param name="package">ExcelPackage object (can be null)</param>
         /// <param name="file">FileInfo object representing the Excel file</param>
         /// <returns>Initialized ExcelPackage object</returns>
-        public static ExcelPackage OpenExcel(ExcelPackage package, FileInfo file)
+        public static ExcelPackage? OpenExcel(FileInfo file)
         {
             try
             {
@@ -19,7 +18,8 @@ namespace TseTmcToExcel
                 ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
                 // Open existing Excel file if it exists, otherwise create a new package
-                package = file.Exists ? new ExcelPackage(file) : new ExcelPackage();
+                var package = file.Exists ? new ExcelPackage(file) : new ExcelPackage();
+                return package;
             }
             catch (Exception ex)
             {
@@ -36,7 +36,7 @@ namespace TseTmcToExcel
             }
 
             // Return the initialized Excel package (or null if an error occurred)
-            return package;
+            return null;
         }
 
         /// <summary>
@@ -75,17 +75,13 @@ namespace TseTmcToExcel
         /// <summary>
         /// Adds data to an Excel file, creating missing columns if necessary.
         /// </summary>
-        /// <param name="package">The Excel file.</param>
-        /// <param name="sheetName">The name of the sheet to write data to.</param>
+        /// <param name="worksheet">The Excel worksheet.</param>
         /// <param name="data">A dictionary containing key-value pairs to store in the sheet.</param>
-        public static ExcelPackage AddToExcel(ExcelPackage package, string sheetName, Dictionary<string, string> data)
+        /// <returns>The modified version of the input worksheet</returns>
+        public static ExcelWorksheet AddToExcel(ExcelWorksheet worksheet, Dictionary<string, string> data)
         {
             try
             {
-                // Get the worksheet by name or create a new one if it doesn't exist
-                var worksheet = package.Workbook.Worksheets.FirstOrDefault(ws => ws.Name == sheetName)
-                                ?? package.Workbook.Worksheets.Add(sheetName);
-
                 // Store existing column headers in a list
                 List<string> existingHeaders = new List<string>();
                 if (worksheet.Dimension != null)
@@ -134,27 +130,19 @@ namespace TseTmcToExcel
                 }
             }
 
-            return package;
+            return worksheet;
         }
 
         /// <summary>
         /// Retrieves the latest ID from a specific column in an Excel sheet.
         /// </summary>
-        /// <param name="filePath">The file path of the Excel file.</param>
-        /// <param name="sheetName">The name of the sheet to read from.</param>
+        /// <param name="worksheet">The worksheet to read from.</param>
         /// <param name="columnIndex">The column index where IDs are stored (default is 1).</param>
         /// <returns>The highest numerical ID found in the specified column.</returns>
-        public static long GetLatestId(string filePath, string sheetName, int columnIndex = 1)
+        public static long GetLatestId(ExcelWorksheet worksheet, int columnIndex = 1)
         {
             try
             {
-                FileInfo file = new FileInfo(filePath);
-                ExcelPackage.LicenseContext = LicenseContext.NonCommercial; // Set license context
-
-                // Open the existing Excel file
-                using var package = new ExcelPackage(file);
-                var worksheet = package.Workbook.Worksheets[sheetName];
-
                 // If the sheet is empty or does not exist, return 0
                 if (worksheet == null || worksheet.Dimension == null)
                     return 0;
@@ -201,6 +189,33 @@ namespace TseTmcToExcel
 
             // If parsing fails, return the original string
             return input;
+        }
+
+        /// <summary>
+        /// Gets the number of rows with data in a given worksheet of an Excel file.
+        /// </summary>
+        /// <param name="worksheet">The worksheet to inspect.</param>
+        /// <returns>Number of rows containing data, or -1 if sheet not found or error occurs.</returns>
+        public static long GetRowCount(ExcelWorksheet worksheet)
+        {
+            try
+            {
+                // Return -1 if sheet doesn't exist
+                if (worksheet == null)
+                    return -1;
+
+                // If the worksheet is empty, Dimension will be null
+                if (worksheet.Dimension == null)
+                    return 0;
+
+                // Return the total number of rows with data
+                return worksheet.Dimension.End.Row;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error reading Excel file: {ex.Message}");
+                return -1;
+            }
         }
     }
 

@@ -2,7 +2,6 @@
 using static TseTmcToExcel.TseTmcTools;
 using static TseTmcToExcel.IO;
 using OfficeOpenXml;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace TseTmcToExcel
 {
@@ -65,20 +64,34 @@ namespace TseTmcToExcel
         /// </summary>
         public static async Task UpdateData()
         {
-            // Split multiple parameters and sheet names into lists for processing
-            List<string> sheetnamesList = new List<string>()
-            {
-                OverviewSheetName, StockSheetName
-            };
-
             // Track the highest ID found in the existing Excel sheets
             long longestID = 0;
 
+            // create a list to record the changes to print
+            var changes = new List<string>();
+
+            // Open the excel file
+            FileInfo file = new FileInfo(ExcelFileName);
+            var package = OpenExcel(file);
+
+            if (package == null)
+                return;
+
+            // Get the worksheet by name or create a new one if it doesn't exist
+            var stockWorksheet = package.Workbook.Worksheets.FirstOrDefault(ws => ws.Name == StockSheetName)
+                            ?? package.Workbook.Worksheets.Add(StockSheetName);
+
+            // Get the worksheet by name or create a new one if it doesn't exist
+            var overviewWorksheet = package.Workbook.Worksheets.FirstOrDefault(ws => ws.Name == OverviewSheetName)
+                            ?? package.Workbook.Worksheets.Add(OverviewSheetName);
+
+
             // Determine the latest ID from all sheets
-            foreach (string sheet in sheetnamesList)
+            foreach (var worksheet in new List<ExcelWorksheet>(){stockWorksheet, overviewWorksheet})
             {
-                longestID = Math.Max(longestID, GetLatestId(ExcelFileName, sheet));
+                longestID = Math.Max(longestID, GetLatestId(worksheet));
             }
+
             longestID++; // Increment to ensure new data has a unique ID
 
             // Dictionary to store retrieved data from API responses
@@ -100,43 +113,60 @@ namespace TseTmcToExcel
                 }
             }
 
-            // Open the excel file
-            ExcelPackage package = new ExcelPackage();
-            FileInfo file = new FileInfo(ExcelFileName);
-            var changes = new List<string>();
-            var excelFile = OpenExcel(package, file);
-
+            // Count the records to make sure the records are added (if 0 shows filed does not exist)
+            var recordsBeforeChange = GetRowCount(stockWorksheet);
+            recordsBeforeChange = recordsBeforeChange == 0 ? 1 : recordsBeforeChange;
+            
             // Save valid data to Excel
             if (dataCollection.Count == ApiParameterList.Count)
                 foreach (var data in dataCollection)
                 {
-                    package = AddToExcel(excelFile, StockSheetName, data.Value);
-                    
+                    stockWorksheet = AddToExcel(stockWorksheet, data.Value);
                     changes.Add(StockNameList[data.Key]);
                 }
             else
                 Console.WriteLine("No valid data received to save!");
 
 
-            if (SelectedItems.Any(x => MarketOverviewItems.Contains(x)))
-            {
-                // Validate and Add GeneralStockData to the closingPriceData
-                var marketOverview = new Dictionary<string, string>{ { "SharedID", longestID.ToString() } };
-                marketOverview = CombineValidData(await GetMarketOverview(), marketOverview).Item2;
+            var recordsAfterChange = GetRowCount(stockWorksheet);
 
-                // Save OverView data to Excel
-                if (marketOverview != null && marketOverview.Any())
+
+            // continue saving the changed file if data was added
+            if ((recordsAfterChange - recordsBeforeChange) == ApiParameterList.Count)
+            {
+                // Count the records to make sure the records are added (if 0 shows filed does not exist)
+                recordsBeforeChange = GetRowCount(overviewWorksheet);
+                recordsBeforeChange = recordsBeforeChange == 0 ? 1 : recordsBeforeChange;
+
+                if (SelectedItems.Any(x => MarketOverviewItems.Contains(x)))
                 {
-                    package = AddToExcel(excelFile, OverviewSheetName, marketOverview);
-                    changes.Add(OverviewSheetName);
+                    // Validate and Add GeneralStockData to the closingPriceData
+                    var marketOverview = new Dictionary<string, string> { { "SharedID", longestID.ToString() } };
+                    marketOverview = CombineValidData(await GetMarketOverview(), marketOverview).Item2;
+
+                    // Save OverView data to Excel
+                    if (marketOverview != null && marketOverview.Any())
+                    {
+                        overviewWorksheet = AddToExcel(overviewWorksheet, marketOverview);
+                        changes.Add(OverviewSheetName);
+                    }
+                    else
+                    {
+                        Console.WriteLine("No valid data received to save!");
+                    }
                 }
+                recordsAfterChange = GetRowCount(overviewWorksheet);
+
+                // save the changed file if data was added
+                if ((recordsAfterChange - recordsBeforeChange) == 1)
+                    SaveExcel(package, file, changes);
                 else
-                {
                     Console.WriteLine("No valid data received to save!");
-                }
             }
-            // save the changed file
-            SaveExcel(package, file, changes);
+            else
+            {
+                Console.WriteLine("No valid data received to save!");
+            }
         }
 
         /// <summary>
